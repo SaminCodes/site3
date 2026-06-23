@@ -1,0 +1,138 @@
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// server.ts
+var import_express = __toESM(require("express"), 1);
+var import_path = __toESM(require("path"), 1);
+var import_vite = require("vite");
+var import_genai = require("@google/genai");
+var import_dotenv = __toESM(require("dotenv"), 1);
+import_dotenv.default.config();
+function getAiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not defined in process.env");
+  }
+  return new import_genai.GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build"
+      }
+    }
+  });
+}
+async function startServer() {
+  const app = (0, import_express.default)();
+  const PORT = 3e3;
+  app.use(import_express.default.json());
+  app.post("/api/summarize", async (req, res) => {
+    try {
+      const { biography } = req.body;
+      console.log("[API /api/summarize] Received request for biography length:", biography?.length);
+      if (!biography || typeof biography !== "string" || !biography.trim()) {
+        return res.status(400).json({ error: "\u0411\u0438\u043E\u0433\u0440\u0430\u0444\u0438\u044F \u043D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430." });
+      }
+      if (!process.env.GEMINI_API_KEY) {
+        console.error("[API /api/summarize] GEMINI_API_KEY is not defined in process.env");
+        return res.status(500).json({ error: "GEMINI_API_KEY \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435." });
+      }
+      const ai = getAiClient();
+      console.log("[API /api/summarize] Calling ai.models.generateContent with model gemini-3.5-flash");
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: biography,
+        config: {
+          systemInstruction: "\u0422\u044B \u2014 \u043E\u043F\u044B\u0442\u043D\u044B\u0439 \u0434\u0435\u0442\u0435\u043A\u0442\u0438\u0432 \u043F\u043E\u043B\u0438\u0446\u0438\u0438 \u0438 \u0430\u0440\u0445\u0438\u0432\u0430\u0440\u0438\u0443\u0441 1940-\u0445 \u0433\u043E\u0434\u043E\u0432. \u0422\u0432\u043E\u044F \u0437\u0430\u0434\u0430\u0447\u0430 \u2014 \u0441\u0436\u0430\u0442\u044C/\u0443\u0436\u0430\u0442\u044C \u043F\u0440\u0435\u0434\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u0443\u044E \u0431\u0438\u043E\u0433\u0440\u0430\u0444\u0438\u044E \u043F\u043E\u0434\u043E\u0437\u0440\u0435\u0432\u0430\u0435\u043C\u043E\u0433\u043E/\u043F\u0440\u0435\u0441\u0442\u0443\u043F\u043D\u0438\u043A\u0430. \u041A\u0420\u0418\u0422\u0418\u0427\u0415\u0421\u041A\u0418 \u0412\u0410\u0416\u041D\u041E: \u0410\u0431\u0441\u043E\u043B\u044E\u0442\u043D\u043E \u0438\u0437\u0431\u0435\u0433\u0430\u0439 \u0434\u0435\u0442\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0438\u043B\u0438 \u0433\u0440\u0430\u0444\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u0436\u0435\u0441\u0442\u043E\u043A\u043E\u0441\u0442\u0438, \u0443\u0431\u0438\u0439\u0441\u0442\u0432, \u043F\u044B\u0442\u043E\u043A, \u043A\u0440\u043E\u0432\u0438 \u0438 \u043B\u044E\u0431\u043E\u0433\u043E \u043D\u0430\u0441\u0438\u043B\u0438\u044F. \u0415\u0441\u043B\u0438 \u0432 \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u043C \u0442\u0435\u043A\u0441\u0442\u0435 \u0435\u0441\u0442\u044C \u0443\u043F\u043E\u043C\u0438\u043D\u0430\u043D\u0438\u044F \u043E \u043D\u0430\u0441\u0438\u043B\u0438\u0438, \u041E\u0411\u042F\u0417\u0410\u0422\u0415\u041B\u042C\u041D\u041E \u043F\u0435\u0440\u0435\u0444\u0440\u0430\u0437\u0438\u0440\u0443\u0439 \u0438\u0445 \u0432 \u043C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u043E \u0441\u0443\u0445\u0438\u0435, \u043D\u0435\u0439\u0442\u0440\u0430\u043B\u044C\u043D\u044B\u0435, \u043A\u0430\u0437\u0435\u043D\u043D\u044B\u0435, \u043E\u0444\u0438\u0446\u0438\u0430\u043B\u044C\u043D\u044B\u0435 \u0438 \u0440\u0430\u0437\u043C\u044B\u0442\u044B\u0435 \u043A\u0440\u0438\u043C\u0438\u043D\u0430\u043B\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u0444\u043E\u0440\u043C\u0443\u043B\u0438\u0440\u043E\u0432\u043A\u0438 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \xAB\u0441\u043E\u0432\u0435\u0440\u0448\u0438\u043B \u0442\u044F\u0436\u043A\u0438\u0435 \u043F\u0440\u0435\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u044F\xBB, \xAB\u0443\u0441\u0442\u0440\u0430\u043D\u0438\u043B \u043E\u043F\u043F\u043E\u043D\u0435\u043D\u0442\u043E\u0432\xBB, \xAB\u043E\u0431\u0432\u0438\u043D\u044F\u0435\u0442\u0441\u044F \u0432 \u043F\u0440\u0430\u0432\u043E\u043D\u0430\u0440\u0443\u0448\u0435\u043D\u0438\u044F\u0445\xBB, \xAB\u0432\u0435\u043B \u043D\u0435\u0437\u0430\u043A\u043E\u043D\u043D\u0443\u044E \u0434\u0435\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C\xBB \u0432\u043C\u0435\u0441\u0442\u043E \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u0436\u0435\u0441\u0442\u043E\u043A\u0438\u0445 \u043F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0435\u0439). \u0422\u0435\u043A\u0441\u0442 \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u043D\u0430\u043F\u0438\u0441\u0430\u043D \u0432 \u043C\u0440\u0430\u0447\u043D\u043E\u043C \u043D\u0443\u0430\u0440\u043D\u043E\u043C \u0441\u0442\u0438\u043B\u0435 \u0438\u0437\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043D\u0430 \u0440\u0443\u0441\u0441\u043A\u043E\u043C \u044F\u0437\u044B\u043A\u0435. \u0414\u043B\u0438\u043D\u0430 \u0438\u0442\u043E\u0433\u043E\u0432\u043E\u0433\u043E \u0442\u0435\u043A\u0441\u0442\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u0441\u043E\u0441\u0442\u0430\u0432\u043B\u044F\u0442\u044C \u0434\u043E 500 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432 (\u043F\u0440\u0438\u043C\u0435\u0440\u043D\u043E 4-5 \u0438\u043D\u0444\u043E\u0440\u043C\u0430\u0442\u0438\u0432\u043D\u044B\u0445 \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0439), \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0431\u043E\u043B\u044C\u0448\u0435 \u043A\u043B\u044E\u0447\u0435\u0432\u044B\u0445 \u0434\u0435\u0442\u0430\u043B\u0435\u0439 \u0431\u0438\u043E\u0433\u0440\u0430\u0444\u0438\u0438, \u043E\u0441\u0442\u0430\u0432\u0430\u044F\u0441\u044C \u043B\u0430\u043A\u043E\u043D\u0438\u0447\u043D\u044B\u043C.",
+          safetySettings: [
+            { category: import_genai.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: import_genai.HarmBlockThreshold.BLOCK_NONE },
+            { category: import_genai.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: import_genai.HarmBlockThreshold.BLOCK_NONE },
+            { category: import_genai.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: import_genai.HarmBlockThreshold.BLOCK_NONE },
+            { category: import_genai.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: import_genai.HarmBlockThreshold.BLOCK_NONE },
+            { category: import_genai.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: import_genai.HarmBlockThreshold.BLOCK_NONE }
+          ]
+        }
+      });
+      console.log("[API /api/summarize] Gemini response keys:", Object.keys(response || {}));
+      if (response.promptFeedback && response.promptFeedback.blockReason === "PROHIBITED_CONTENT") {
+        console.warn("[API /api/summarize] Content was blocked due to PROHIBITED_CONTENT. Returning fallback summary instead of error.");
+        return res.json({
+          summary: "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u0434\u0435\u043B\u0430 \u043A\u043B\u0430\u0441\u0441\u0438\u0444\u0438\u0446\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u0414\u0435\u043F\u0430\u0440\u0442\u0430\u043C\u0435\u043D\u0442\u043E\u043C. \u0421\u0443\u0431\u044A\u0435\u043A\u0442 \u043E\u0431\u0432\u0438\u043D\u044F\u0435\u0442\u0441\u044F \u0432 \u043D\u0430\u0440\u0443\u0448\u0435\u043D\u0438\u0438 \u0444\u0435\u0434\u0435\u0440\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0437\u0430\u043A\u043E\u043D\u043E\u0434\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u0430, \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u043C \u0443\u0447\u0430\u0441\u0442\u0438\u0438 \u0432 \u043E\u0440\u0433\u0430\u043D\u0438\u0437\u043E\u0432\u0430\u043D\u043D\u043E\u0439 \u043F\u0440\u0435\u0441\u0442\u0443\u043F\u043D\u043E\u0441\u0442\u0438 \u0438 \u0432\u0435\u0434\u0435\u043D\u0438\u0438 \u043F\u043E\u0434\u043F\u043E\u043B\u044C\u043D\u043E\u0439 \u0434\u0435\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u0438. \u041F\u043E\u0434\u0440\u043E\u0431\u043D\u044B\u0435 \u043D\u0430\u0441\u0438\u043B\u044C\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u044D\u043F\u0438\u0437\u043E\u0434\u044B \u0438\u0437\u044A\u044F\u0442\u044B \u0438\u0437 \u043E\u0444\u0438\u0446\u0438\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u0442\u0447\u0435\u0442\u0430 \u0432 \u0438\u043D\u0442\u0435\u0440\u0435\u0441\u0430\u0445 \u0441\u043B\u0435\u0434\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0433\u043E \u0434\u0435\u043B\u043E\u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0441\u0442\u0432\u0430."
+        });
+      }
+      let summary = response.text;
+      if (!summary && response.candidates && response.candidates[0]) {
+        console.log("[API /api/summarize] response.text was empty, checking candidates...");
+        const candidate = response.candidates[0];
+        if (candidate.finishReason === "SAFETY") {
+          console.warn("[API /api/summarize] Candidate finishReason is SAFETY, returning fallback summary.");
+          return res.json({
+            summary: "\u0414\u043E\u0441\u044C\u0435 \u043A\u043B\u0430\u0441\u0441\u0438\u0444\u0438\u0446\u0438\u0440\u043E\u0432\u0430\u043D\u043E \u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0435\u0439 \u0414\u0435\u043F\u0430\u0440\u0442\u0430\u043C\u0435\u043D\u0442\u0430. \u0421\u0443\u0431\u044A\u0435\u043A\u0442 \u0437\u0430\u043C\u0435\u0448\u0430\u043D \u0432 \u043E\u0440\u0433\u0430\u043D\u0438\u0437\u043E\u0432\u0430\u043D\u043D\u043E\u0439 \u043A\u0440\u0438\u043C\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0439 \u0434\u0435\u044F\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u0438, \u0440\u044D\u043A\u0435\u0442\u0435 \u0438 \u043D\u0430\u0440\u0443\u0448\u0435\u043D\u0438\u0438 \u0444\u0435\u0434\u0435\u0440\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043F\u043E\u0440\u044F\u0434\u043A\u0430. \u0427\u0430\u0441\u0442\u044C \u043E\u043F\u0435\u0440\u0430\u0442\u0438\u0432\u043D\u043E\u0439 \u0438\u043D\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u0438 \u0438\u0437\u044A\u044F\u0442\u0430 \u0432\u043E \u0438\u0437\u0431\u0435\u0436\u0430\u043D\u0438\u0435 \u0440\u0430\u0437\u0433\u043B\u0430\u0448\u0435\u043D\u0438\u044F \u043E\u0441\u043E\u0431\u043E \u0447\u0443\u0432\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0445 \u0434\u0435\u0442\u0430\u043B\u0435\u0439 \u0434\u0435\u043B\u0430."
+          });
+        }
+        const parts = candidate.content?.parts;
+        if (parts && parts[0]) {
+          summary = parts[0].text;
+          console.log("[API /api/summarize] Extracted biography from candidate parts[0].text");
+        }
+      }
+      if (!summary) {
+        console.warn("[API /api/summarize] No text generated, possibly blocked. Returning safe default summary.");
+        return res.json({
+          summary: "\u041C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u044B \u043F\u043E\u0434\u043E\u0437\u0440\u0435\u0432\u0430\u0435\u043C\u043E\u0433\u043E \u0437\u0430\u043D\u0435\u0441\u0435\u043D\u044B \u0432 \u0430\u0440\u0445\u0438\u0432 \u0432 \u0437\u0430\u043A\u0440\u044B\u0442\u043E\u043C \u0440\u0435\u0436\u0438\u043C\u0435. \u0421\u0443\u0431\u044A\u0435\u043A\u0442 \u043F\u0440\u043E\u0445\u043E\u0434\u0438\u0442 \u0433\u043B\u0430\u0432\u043D\u044B\u043C \u0444\u0438\u0433\u0443\u0440\u0430\u043D\u0442\u043E\u043C \u043F\u043E \u0434\u0435\u043B\u0443 \u0441\u0438\u043D\u0434\u0438\u043A\u0430\u0442\u0430. \u0414\u0430\u043B\u044C\u043D\u0435\u0439\u0448\u0438\u0435 \u043E\u043F\u0435\u0440\u0430\u0442\u0438\u0432\u043D\u043E-\u0441\u043B\u0435\u0434\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043E\u0441\u0443\u0449\u0435\u0441\u0442\u0432\u043B\u044F\u044E\u0442\u0441\u044F \u043F\u043E\u0434 \u0433\u0440\u0438\u0444\u043E\u043C '\u0421\u0435\u043A\u0440\u0435\u0442\u043D\u043E'."
+        });
+      }
+      const trimmedSummary = summary.trim();
+      console.log("[API /api/summarize] Successfully summarized biography to length:", trimmedSummary.length);
+      res.json({ summary: trimmedSummary });
+    } catch (error) {
+      console.error("[API /api/summarize] Gemini summarize error:", error);
+      const errString = String(error?.message || "").toLowerCase();
+      if (errString.includes("safety") || errString.includes("block") || errString.includes("candidate") || errString.includes("prohibited")) {
+        console.log("[API /api/summarize] Safety/Block error detected, sending fallback response.");
+        return res.json({
+          summary: "\u0414\u0435\u043B\u043E \u0437\u0430\u0430\u0440\u0445\u0438\u0432\u0438\u0440\u043E\u0432\u0430\u043D\u043E \u0441 \u043A\u0443\u043F\u044E\u0440\u0430\u043C\u0438. \u041E\u0431\u0432\u0438\u043D\u044F\u0435\u043C\u044B\u0439 \u0437\u0430\u043C\u0435\u0448\u0430\u043D \u0432 \u0442\u0435\u043D\u0435\u0432\u044B\u0445 \u043A\u0440\u0438\u043C\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0445 \u043E\u043F\u0435\u0440\u0430\u0446\u0438\u044F\u0445, \u0440\u044D\u043A\u0435\u0442\u0438\u0440\u0441\u043A\u0438\u0445 \u0437\u0430\u0433\u043E\u0432\u043E\u0440\u0430\u0445 \u0438 \u043F\u043E\u0434\u0440\u044B\u0432\u0435 \u0443\u0441\u0442\u043E\u0435\u0432. \u041F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438 \u0438\u043D\u0446\u0438\u0434\u0435\u043D\u0442\u043E\u0432 \u043F\u043E\u0434\u0432\u0435\u0440\u0433\u043D\u0443\u0442\u044B \u0446\u0435\u043D\u0437\u0443\u0440\u0435 \u0432 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0438 \u0441 \u043F\u0430\u0440\u0430\u0433\u0440\u0430\u0444\u043E\u043C \u0411-41 \u0423\u0433\u043E\u043B\u043E\u0432\u043D\u043E\u0433\u043E \u041A\u043E\u0434\u0435\u043A\u0441\u0430 \u0421\u0428\u0410."
+        });
+      }
+      res.status(500).json({ error: error?.message || "\u0412\u043D\u0443\u0442\u0440\u0435\u043D\u043D\u044F\u044F \u043E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043F\u0440\u0438 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0435 \u0418\u0418." });
+    }
+  });
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await (0, import_vite.createServer)({
+      server: { middlewareMode: true },
+      appType: "spa"
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = import_path.default.join(process.cwd(), "dist");
+    app.use(import_express.default.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(import_path.default.join(distPath, "index.html"));
+    });
+  }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+startServer();
+//# sourceMappingURL=server.cjs.map
