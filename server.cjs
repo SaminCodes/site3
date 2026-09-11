@@ -42,11 +42,37 @@ function setupMultiplayerSocket(httpServer) {
   const rooms = /* @__PURE__ */ new Map();
   const matchmakingQueue = [];
   const socketMetadata = /* @__PURE__ */ new Map();
+  const MAIN_ROOM_ID = "main_arena_room";
+  const ensureMainRoom = () => {
+    let mainRoom = rooms.get(MAIN_ROOM_ID);
+    if (!mainRoom) {
+      mainRoom = {
+        id: MAIN_ROOM_ID,
+        name: "\u0413\u043B\u0430\u0432\u043D\u0430\u044F \u0410\u0440\u0435\u043D\u0430 (\u0421\u0435\u0442\u0435\u0432\u0430\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0430)",
+        status: "waiting",
+        host: null,
+        guest: null,
+        spectator: null,
+        spectators: [],
+        creatorId: "admin_server",
+        creatorName: "\u0421\u0435\u0440\u0432\u0435\u0440",
+        mapId: "docks_ruins_50x50",
+        mapName: "\u041F\u043E\u0440\u0442\u043E\u0432\u044B\u0435 \u0420\u0443\u0438\u043D\u044B (50\xD750)",
+        turnNumber: 1,
+        roundNumber: 1,
+        createdAt: Date.now()
+      };
+      rooms.set(MAIN_ROOM_ID, mainRoom);
+    }
+    return mainRoom;
+  };
+  ensureMainRoom();
   const getEnrichedRoomsList = () => {
+    ensureMainRoom();
     const list = [];
     const now = Date.now();
     for (const [id, room] of rooms.entries()) {
-      if (room.status === "waiting" && now - room.createdAt > 30 * 60 * 1e3) {
+      if (id !== MAIN_ROOM_ID && room.status === "waiting" && now - room.createdAt > 30 * 60 * 1e3) {
         rooms.delete(id);
         continue;
       }
@@ -57,7 +83,7 @@ function setupMultiplayerSocket(httpServer) {
         onlineCount
       });
     }
-    return list.sort((a, b) => b.createdAt - a.createdAt);
+    return list.sort((a, b) => a.id === MAIN_ROOM_ID ? -1 : b.id === MAIN_ROOM_ID ? 1 : b.createdAt - a.createdAt);
   };
   const broadcastRoomsList = () => {
     io.emit("rooms_list", getEnrichedRoomsList());
@@ -106,7 +132,7 @@ function setupMultiplayerSocket(httpServer) {
     });
     socket.on("join_room", (data) => {
       try {
-        const room = rooms.get(data.roomId);
+        const room = rooms.get(data.roomId) || (data.roomId === MAIN_ROOM_ID ? ensureMainRoom() : void 0);
         if (!room) {
           return socket.emit("room_error", { message: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0438\u043B\u0438 \u0431\u044B\u043B\u0430 \u0443\u0434\u0430\u043B\u0435\u043D\u0430" });
         }
@@ -141,6 +167,34 @@ function setupMultiplayerSocket(httpServer) {
           isReady: false,
           connected: true
         };
+        if (data.targetSlot === "host") {
+          if (!room.host || room.host.id === joiningPlayer.id) {
+            room.host = joiningPlayer;
+            if (room.guest) room.status = "ready";
+            socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
+            socket.join(data.roomId);
+            socket.emit("room_joined", room);
+            io.to(data.roomId).emit("room_updated", room);
+            broadcastRoomsList();
+            return;
+          } else {
+            return socket.emit("room_error", { message: "\u0421\u043B\u043E\u0442 \u0418\u0433\u0440\u043E\u043A 1 \u0443\u0436\u0435 \u0437\u0430\u043D\u044F\u0442" });
+          }
+        }
+        if (data.targetSlot === "guest") {
+          if (!room.guest || room.guest.id === joiningPlayer.id) {
+            room.guest = joiningPlayer;
+            if (room.host) room.status = "ready";
+            socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
+            socket.join(data.roomId);
+            socket.emit("room_joined", room);
+            io.to(data.roomId).emit("room_updated", room);
+            broadcastRoomsList();
+            return;
+          } else {
+            return socket.emit("room_error", { message: "\u0421\u043B\u043E\u0442 \u0418\u0433\u0440\u043E\u043A 2 \u0443\u0436\u0435 \u0437\u0430\u043D\u044F\u0442" });
+          }
+        }
         if (!room.host) {
           room.host = joiningPlayer;
           if (room.guest) room.status = "ready";
@@ -161,11 +215,38 @@ function setupMultiplayerSocket(httpServer) {
           broadcastRoomsList();
           return;
         }
-        return socket.emit("room_error", { message: "\u0412 \u043A\u043E\u043C\u043D\u0430\u0442\u0435 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C 2 \u0438\u0433\u0440\u043E\u043A\u0430" });
+        const spec = {
+          ...joiningPlayer,
+          selectedCharacters: [],
+          isReady: true,
+          connected: true
+        };
+        if (!room.spectators) room.spectators = [];
+        if (!room.spectators.some((s) => s.id === spec.id)) {
+          room.spectators.push(spec);
+        }
+        socketMetadata.set(socket.id, { userId: spec.id, userName: spec.name, roomId: data.roomId });
+        socket.join(data.roomId);
+        socket.emit("room_joined", room);
+        io.to(data.roomId).emit("room_updated", room);
+        broadcastRoomsList();
       } catch (err) {
         console.error("Error in join_room:", err);
         socket.emit("room_error", { message: "\u041E\u0448\u0438\u0431\u043A\u0430 \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u044F \u043A \u043A\u043E\u043C\u043D\u0430\u0442\u0435" });
       }
+    });
+    socket.on("release_player_slot", (data) => {
+      const room = rooms.get(data.roomId);
+      if (!room) return;
+      if (room.host && room.host.id === data.userId) {
+        room.host = null;
+        if (room.status === "ready") room.status = "waiting";
+      } else if (room.guest && room.guest.id === data.userId) {
+        room.guest = null;
+        if (room.status === "ready") room.status = "waiting";
+      }
+      io.to(data.roomId).emit("room_updated", room);
+      broadcastRoomsList();
     });
     socket.on("join_as_spectator", (data) => {
       try {
@@ -433,10 +514,53 @@ function setupMultiplayerSocket(httpServer) {
         if (room.spectators) room.spectators = room.spectators.filter((s) => s.id !== data.playerId);
         io.to(data.roomId).emit("room_updated", room);
       }
-      if (!room.host && !room.guest && !room.spectator) {
-        rooms.delete(data.roomId);
-        io.to(data.roomId).emit("room_closed", { message: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0430" });
+      if (!room.host && !room.guest && !room.spectator && (!room.spectators || room.spectators.length === 0)) {
+        if (data.roomId !== MAIN_ROOM_ID) {
+          rooms.delete(data.roomId);
+          io.to(data.roomId).emit("room_closed", { message: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0430" });
+        } else {
+          room.status = "waiting";
+          io.to(data.roomId).emit("room_updated", room);
+        }
       }
+      broadcastRoomsList();
+    });
+    socket.on("admin_reset_room", (data) => {
+      const room = rooms.get(data.roomId);
+      if (!room) return;
+      room.status = "waiting";
+      room.currentTurnCharacterId = void 0;
+      room.activePlayerId = void 0;
+      room.winnerPlayerId = void 0;
+      room.winnerPlayerName = void 0;
+      room.turnNumber = 1;
+      room.roundNumber = 1;
+      if (room.host) room.host.isReady = false;
+      if (room.guest) room.guest.isReady = false;
+      io.to(data.roomId).emit("room_updated", room);
+      broadcastRoomsList();
+    });
+    socket.on("admin_kick_slot", (data) => {
+      const room = rooms.get(data.roomId);
+      if (!room) return;
+      if (data.slot === "host") {
+        room.host = null;
+      } else if (data.slot === "guest") {
+        room.guest = null;
+      }
+      if (room.status !== "in_game") {
+        room.status = "waiting";
+      }
+      io.to(data.roomId).emit("room_updated", room);
+      broadcastRoomsList();
+    });
+    socket.on("admin_change_map", (data) => {
+      const room = rooms.get(data.roomId);
+      if (!room) return;
+      room.mapData = data.mapData;
+      room.mapId = data.mapData.id;
+      room.mapName = data.mapData.name;
+      io.to(data.roomId).emit("room_updated", room);
       broadcastRoomsList();
     });
     socket.on("join_matchmaking", (player) => {
