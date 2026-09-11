@@ -136,42 +136,60 @@ function setupMultiplayerSocket(httpServer) {
         if (!room) {
           return socket.emit("room_error", { message: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0438\u043B\u0438 \u0431\u044B\u043B\u0430 \u0443\u0434\u0430\u043B\u0435\u043D\u0430" });
         }
-        if (room.status === "in_game" && room.host?.id !== data.guest.id && room.guest?.id !== data.guest.id && room.spectator?.id !== data.guest.id) {
+        const userIdStr = String(data.guest.id);
+        if (room.status === "in_game" && String(room.host?.id) !== userIdStr && String(room.guest?.id) !== userIdStr && String(room.spectator?.id) !== userIdStr) {
           return socket.emit("room_error", { message: "\u0412 \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u0435 \u0443\u0436\u0435 \u0438\u0434\u0451\u0442 \u043C\u0430\u0442\u0447" });
         }
-        if (room.host && room.host.id === data.guest.id) {
+        if (room.host && String(room.host.id) === userIdStr) {
           room.host.connected = true;
-          socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
+          if (data.guest.name) room.host.name = data.guest.name;
+          if (data.guest.avatarUrl) room.host.avatarUrl = data.guest.avatarUrl;
+          if (Array.isArray(data.guest.selectedCharacters) && data.guest.selectedCharacters.length > 0) {
+            room.host.selectedCharacters = data.guest.selectedCharacters.slice(0, 2);
+          }
+          socketMetadata.set(socket.id, { userId: userIdStr, userName: data.guest.name, roomId: data.roomId });
           socket.join(data.roomId);
           socket.emit("room_joined", room);
           io.to(data.roomId).emit("room_updated", room);
           broadcastRoomsList();
           return;
         }
-        if (room.guest && room.guest.id === data.guest.id) {
+        if (room.guest && String(room.guest.id) === userIdStr) {
           room.guest.connected = true;
-          socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
+          if (data.guest.name) room.guest.name = data.guest.name;
+          if (data.guest.avatarUrl) room.guest.avatarUrl = data.guest.avatarUrl;
+          if (Array.isArray(data.guest.selectedCharacters) && data.guest.selectedCharacters.length > 0) {
+            room.guest.selectedCharacters = data.guest.selectedCharacters.slice(0, 2);
+          }
+          socketMetadata.set(socket.id, { userId: userIdStr, userName: data.guest.name, roomId: data.roomId });
           socket.join(data.roomId);
           socket.emit("room_joined", room);
           io.to(data.roomId).emit("room_updated", room);
           broadcastRoomsList();
           return;
-        }
-        if (room.spectator && room.spectator.id === data.guest.id) {
-          room.spectator = null;
-          if (room.spectators) room.spectators = room.spectators.filter((s) => s.id !== data.guest.id);
         }
         const joiningPlayer = {
           ...data.guest,
+          id: userIdStr,
           selectedCharacters: Array.isArray(data.guest.selectedCharacters) ? data.guest.selectedCharacters.slice(0, 2) : [],
           isReady: false,
           connected: true
         };
         if (data.targetSlot === "host") {
-          if (!room.host || room.host.id === joiningPlayer.id) {
+          if (!room.host || String(room.host.id) === userIdStr) {
+            if (room.guest && String(room.guest.id) === userIdStr) {
+              room.guest = null;
+            }
+            if (room.spectators) {
+              room.spectators = room.spectators.filter((s) => String(s.id) !== userIdStr);
+            }
+            if (room.spectator && String(room.spectator.id) === userIdStr) {
+              room.spectator = null;
+            }
             room.host = joiningPlayer;
             if (room.guest) room.status = "ready";
-            socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
+            else room.status = "waiting";
+            socketMetadata.set(socket.id, { userId: userIdStr, userName: joiningPlayer.name, roomId: data.roomId });
             socket.join(data.roomId);
             socket.emit("room_joined", room);
             io.to(data.roomId).emit("room_updated", room);
@@ -182,10 +200,20 @@ function setupMultiplayerSocket(httpServer) {
           }
         }
         if (data.targetSlot === "guest") {
-          if (!room.guest || room.guest.id === joiningPlayer.id) {
+          if (!room.guest || String(room.guest.id) === userIdStr) {
+            if (room.host && String(room.host.id) === userIdStr) {
+              room.host = null;
+            }
+            if (room.spectators) {
+              room.spectators = room.spectators.filter((s) => String(s.id) !== userIdStr);
+            }
+            if (room.spectator && String(room.spectator.id) === userIdStr) {
+              room.spectator = null;
+            }
             room.guest = joiningPlayer;
             if (room.host) room.status = "ready";
-            socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
+            else room.status = "waiting";
+            socketMetadata.set(socket.id, { userId: userIdStr, userName: joiningPlayer.name, roomId: data.roomId });
             socket.join(data.roomId);
             socket.emit("room_joined", room);
             io.to(data.roomId).emit("room_updated", room);
@@ -195,37 +223,11 @@ function setupMultiplayerSocket(httpServer) {
             return socket.emit("room_error", { message: "\u0421\u043B\u043E\u0442 \u0418\u0433\u0440\u043E\u043A 2 \u0443\u0436\u0435 \u0437\u0430\u043D\u044F\u0442" });
           }
         }
-        if (!room.host) {
-          room.host = joiningPlayer;
-          if (room.guest) room.status = "ready";
-          socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
-          socket.join(data.roomId);
-          socket.emit("room_joined", room);
-          io.to(data.roomId).emit("room_updated", room);
-          broadcastRoomsList();
-          return;
-        }
-        if (!room.guest) {
-          room.guest = joiningPlayer;
-          if (room.host) room.status = "ready";
-          socketMetadata.set(socket.id, { userId: data.guest.id, userName: data.guest.name, roomId: data.roomId });
-          socket.join(data.roomId);
-          socket.emit("room_joined", room);
-          io.to(data.roomId).emit("room_updated", room);
-          broadcastRoomsList();
-          return;
-        }
-        const spec = {
-          ...joiningPlayer,
-          selectedCharacters: [],
-          isReady: true,
-          connected: true
-        };
         if (!room.spectators) room.spectators = [];
-        if (!room.spectators.some((s) => s.id === spec.id)) {
-          room.spectators.push(spec);
+        if (!room.spectators.some((s) => String(s.id) === userIdStr)) {
+          room.spectators.push(joiningPlayer);
         }
-        socketMetadata.set(socket.id, { userId: spec.id, userName: spec.name, roomId: data.roomId });
+        socketMetadata.set(socket.id, { userId: userIdStr, userName: joiningPlayer.name, roomId: data.roomId });
         socket.join(data.roomId);
         socket.emit("room_joined", room);
         io.to(data.roomId).emit("room_updated", room);
@@ -238,10 +240,12 @@ function setupMultiplayerSocket(httpServer) {
     socket.on("release_player_slot", (data) => {
       const room = rooms.get(data.roomId);
       if (!room) return;
-      if (room.host && room.host.id === data.userId) {
+      const userIdStr = String(data.userId);
+      if (room.host && String(room.host.id) === userIdStr) {
         room.host = null;
         if (room.status === "ready") room.status = "waiting";
-      } else if (room.guest && room.guest.id === data.userId) {
+      }
+      if (room.guest && String(room.guest.id) === userIdStr) {
         room.guest = null;
         if (room.status === "ready") room.status = "waiting";
       }
@@ -624,9 +628,10 @@ function setupMultiplayerSocket(httpServer) {
       if (meta && meta.roomId) {
         const room = rooms.get(meta.roomId);
         if (room) {
-          if (room.host.id === meta.userId) {
+          const uId = String(meta.userId);
+          if (room.host && String(room.host.id) === uId) {
             room.host.connected = false;
-          } else if (room.guest && room.guest.id === meta.userId) {
+          } else if (room.guest && String(room.guest.id) === uId) {
             room.guest.connected = false;
           }
           io.to(meta.roomId).emit("room_updated", room);
