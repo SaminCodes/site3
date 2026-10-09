@@ -369,7 +369,23 @@ function startMatchInRoom(room) {
   room.players.forEach((player, pIdx) => {
     const charsData = player.charactersData && player.charactersData.length > 0 ? player.charactersData : player.selectedCharacterIds.map((id) => ({ id, name: `\u0413\u0435\u0440\u043E\u0439 ${id}` }));
     charsData.forEach((charTemplate, slotIdx) => {
-      const spawn = getPvpSpawnCoordinates(pIdx, slotIdx, room.mode, arena.width, arena.height);
+      let spawnX = 0;
+      let spawnY = 0;
+      let spawnFacing = pIdx === 0 ? "right" : "left";
+      const customTeamSpawns = room.mapData?.teamSpawns;
+      const teamKey = pIdx === 0 ? "team1" : "team2";
+      const teamList = customTeamSpawns?.[teamKey];
+      const customSpawn = teamList && Array.isArray(teamList) ? teamList.find((s) => s.slotIndex === slotIdx) || teamList[slotIdx] : null;
+      if (customSpawn && typeof customSpawn.x === "number" && typeof customSpawn.y === "number") {
+        spawnX = customSpawn.x;
+        spawnY = customSpawn.y;
+        spawnFacing = customSpawn.facing || (pIdx === 0 ? "right" : "left");
+      } else {
+        const fallback = getPvpSpawnCoordinates(pIdx, slotIdx, room.mode, arena.width, arena.height);
+        spawnX = fallback.x;
+        spawnY = fallback.y;
+        spawnFacing = fallback.facing;
+      }
       const stats = charTemplate.stats || {};
       const maxHp = Number(stats.hp || stats.maxHp || 120);
       const maxMana = Number(stats.mana || stats.maxMana || 60);
@@ -388,9 +404,9 @@ function startMatchInRoom(room) {
         ownerId: player.id,
         ownerName: player.name,
         playerColor: player.color,
-        x: spawn.x,
-        y: spawn.y,
-        facing: spawn.facing,
+        x: spawnX,
+        y: spawnY,
+        facing: spawnFacing,
         currentHp: maxHp,
         maxHp,
         currentMana: maxMana,
