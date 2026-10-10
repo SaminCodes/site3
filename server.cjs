@@ -343,28 +343,20 @@ function startTurnTimer(room) {
     clearInterval(room.turnTimer);
     room.turnTimer = void 0;
   }
-  room.turnTimeRemaining = room.turnTimeMax;
-  room.turnTimer = setInterval(() => {
-    if (room.status !== "in_battle") {
-      if (room.turnTimer) clearInterval(room.turnTimer);
-      return;
-    }
-    room.turnTimeRemaining -= 1;
-    if (room.turnTimeRemaining <= 0) {
-      handleServerEndTurn(room, room.activeCharacterId || "");
-    }
-  }, 1e3);
+  room.turnTimeRemaining = 0;
 }
 function startMatchInRoom(room) {
   room.status = "in_battle";
   room.startedAt = Date.now();
   room.turnNumber = 1;
   room.roundNumber = 1;
-  const arena = createPvpArenaMap(24, 24);
-  room.mapWidth = arena.width;
-  room.mapHeight = arena.height;
-  room.tiles = arena.tiles;
-  room.obstacles = arena.obstacles;
+  const hasCustomMap = room.mapData && room.mapData.tiles && Object.keys(room.mapData.tiles).length > 0;
+  const arena = hasCustomMap ? room.mapData : createPvpArenaMap(24, 24);
+  room.mapWidth = arena.width || 24;
+  room.mapHeight = arena.height || 24;
+  room.tiles = arena.tiles || {};
+  room.obstacles = arena.obstacles || {};
+  room.mapData = arena;
   room.characters = [];
   room.players.forEach((player, pIdx) => {
     const charsData = player.charactersData && player.charactersData.length > 0 ? player.charactersData : player.selectedCharacterIds.map((id) => ({ id, name: `\u0413\u0435\u0440\u043E\u0439 ${id}` }));
@@ -381,7 +373,7 @@ function startMatchInRoom(room) {
         spawnY = customSpawn.y;
         spawnFacing = customSpawn.facing || (pIdx === 0 ? "right" : "left");
       } else {
-        const fallback = getPvpSpawnCoordinates(pIdx, slotIdx, room.mode, arena.width, arena.height);
+        const fallback = getPvpSpawnCoordinates(pIdx, slotIdx, room.mode, arena.width || 24, arena.height || 24);
         spawnX = fallback.x;
         spawnY = fallback.y;
         spawnFacing = fallback.facing;
@@ -397,6 +389,7 @@ function startMatchInRoom(room) {
         name: charTemplate.name || `\u0411\u043E\u0435\u0446 ${player.name}`,
         avatarUrl: charTemplate.imageUrl || charTemplate.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200",
         spriteUrl: charTemplate.spriteUrl || "",
+        characterFolder: charTemplate.characterFolder || charTemplate.gitFolderName || "",
         stars: charTemplate.stars || 3,
         rarity: charTemplate.rarity || "\u0420\u0435\u0434\u043A\u0438\u0439",
         role: charTemplate.role || "\u0412\u043E\u0438\u043D",
@@ -447,9 +440,13 @@ function startMatchInRoom(room) {
     });
   });
   room.characters.sort((a, b) => {
+    const initA = Number(a.stats?.initiative ?? a.initiative ?? 0);
+    const initB = Number(b.stats?.initiative ?? b.initiative ?? 0);
+    if (initB !== initA) return initB - initA;
     const agiA = Number(a.stats?.agility || a.speed || 0);
     const agiB = Number(b.stats?.agility || b.speed || 0);
-    return agiB - agiA;
+    if (agiB !== agiA) return agiB - agiA;
+    return (a.name || "").localeCompare(b.name || "");
   });
   room.turnOrderQueue = room.characters.map((c) => c.id);
   room.turnIndex = 0;
@@ -607,7 +604,7 @@ async function startServer() {
           return;
         }
         if (type === "CREATE_ROOM") {
-          const { title, mode, characterIds = [], charactersData = [] } = payload;
+          const { title, mode, characterIds = [], charactersData = [], customMap } = payload;
           const pId = payload.user?.id || ws.userId || `user_${Date.now()}`;
           const pName = payload.user?.name || ws.userName || "\u0418\u0433\u0440\u043E\u043A 1";
           const pAvatar = payload.user?.avatarUrl || ws.userAvatar || "";
@@ -615,6 +612,7 @@ async function startServer() {
           ws.userName = pName;
           ws.userAvatar = pAvatar;
           const roomId = `room_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const hasCustom = customMap && customMap.tiles && Object.keys(customMap.tiles).length > 0;
           const newRoom = {
             id: roomId,
             title: title?.trim() || `\u0414\u0443\u044D\u043B\u044C \u0420\u0430\u0437\u043B\u043E\u043C\u0430 #${Math.floor(Math.random() * 900 + 100)}`,
@@ -635,18 +633,19 @@ async function startServer() {
                 ws
               }
             ],
-            mapId: "pvp_arena_default",
-            mapWidth: 24,
-            mapHeight: 24,
-            tiles: {},
-            obstacles: {},
+            mapId: customMap?.id || "pvp_arena_default",
+            mapWidth: customMap?.width || 24,
+            mapHeight: customMap?.height || 24,
+            tiles: customMap?.tiles || {},
+            obstacles: customMap?.obstacles || {},
+            mapData: hasCustom ? customMap : void 0,
             characters: [],
             turnOrderQueue: [],
             turnIndex: 0,
             turnNumber: 0,
             roundNumber: 0,
-            turnTimeRemaining: 45,
-            turnTimeMax: 45,
+            turnTimeRemaining: 0,
+            turnTimeMax: 0,
             createdAt: Date.now(),
             recentActionLog: [
               {
@@ -670,6 +669,27 @@ async function startServer() {
               broadcastRoomsList(client);
             }
           });
+          return;
+        }
+        if (type === "ADMIN_CLOSE_ROOM" || type === "FORCE_CLOSE_ROOM") {
+          const { roomId } = payload;
+          const room = pvpRooms.get(roomId);
+          if (room) {
+            if (room.turnTimer) {
+              clearInterval(room.turnTimer);
+              room.turnTimer = void 0;
+            }
+            broadcastToRoom(room, {
+              type: "ROOM_CLOSED",
+              payload: { roomId, reason: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 \u0431\u044B\u043B\u0430 \u043F\u0440\u0438\u043D\u0443\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E \u0437\u0430\u043A\u0440\u044B\u0442\u0430 \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440\u043E\u043C" }
+            });
+            pvpRooms.delete(roomId);
+            wss.clients.forEach((client) => {
+              if (client.readyState === import_ws.WebSocket.OPEN) {
+                broadcastRoomsList(client);
+              }
+            });
+          }
           return;
         }
         if (type === "JOIN_ROOM") {
@@ -923,7 +943,7 @@ async function startServer() {
           }
           actor.currentAp = Math.max(0, currentAp - apCost);
           actor.currentMana = Math.max(0, currentMana - manaCost);
-          const target = targetCharacterId ? room.characters.find((c) => c.id === targetCharacterId) : null;
+          const target = targetCharacterId ? room.characters.find((c) => c.id === targetCharacterId) : typeof targetX === "number" && typeof targetY === "number" ? room.characters.find((c) => c.x === targetX && c.y === targetY && c.currentHp > 0 && c.id !== actor.id) : null;
           let damage = 0;
           let heal = 0;
           if (skill.type === "heal" || skill.name?.toLowerCase().includes("\u0438\u0441\u0446\u0435\u043B\u0435\u043D\u0438\u0435") || skill.name?.toLowerCase().includes("\u043B\u0435\u0447\u0435\u043D\u0438\u0435")) {
